@@ -1,2 +1,2 @@
 # icalc
-Ivy's Python Calculator
+This is the first "real" python project i've ever worked on. I decided to make this out of spite, because desmos can't iterate functions. the issue i ran into was while coding the collatz conjecture (or, trying to,) i got the function for it: f(x) = {mod(x, 2) = 1: 3x+1, mod(x, 2) = 0: x/2}. but I was unable to iterate the function until it reached 1. I've always been facinated by said conjecture, and have always wanted to visualize the path it takes from each number. My father is helping me make this, and teaching me python along the way.
