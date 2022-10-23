@@ -7,6 +7,8 @@ class TokenVariant(Enum):
     NUM = 1
     OPER = 2
     VAR = 3
+    OPEN_PAREN = 4
+    CLOSE_PAREN = 5
 
 @dataclass
 class Token:
@@ -31,6 +33,11 @@ def tokenize(arg:str) -> List[Token]:
     def popnextoken(arg2:str) -> Token:
         if arg2[0] in '+-/*^':
             return Token(arg2[0], TokenVariant.OPER)
+        if arg2[0] == '(':
+            return Token(arg2[0], TokenVariant.OPEN_PAREN)
+        if arg2[0] == ')':
+            return Token(arg2[0], TokenVariant.CLOSE_PAREN)
+            
         if is_number_character(arg2[0]):
             # Find the next index of a NON number character, or -1
             # TODO: Fix the case where there are two decimal symbols in the number.  That should be an error.

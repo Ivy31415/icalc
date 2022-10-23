@@ -9,6 +9,22 @@ class BinaryOp(Enum):
     MUL = 2
     DIV = 3
 
+def get_precedence(token:Token) -> int:
+    if token.variant == TokenVariant.NUM:
+        return 1
+
+    if token.variant == TokenVariant.OPER:
+        if token.value in ['+', '-']:
+            return 2
+        if token.value in ['*', '/']:
+            return 3
+        raise SyntaxError(f'Unknown operator {token.value}')
+
+    if token.variant in [TokenVariant.OPEN_PAREN, TokenVariant.CLOSE_PAREN]:
+        return 4
+
+    raise SyntaxError(f'Token {token.variant} doesnt support the concept of precedence')
+
 class Node:
     def eval(self):
         return 0
@@ -58,14 +74,36 @@ def make_binary_node(left:Node, oper:Token, right:Node) -> BinaryOpNode:
     return BinaryOpNode(left, oper_token_to_enum(oper), right)
      
 
-def parse(tokens:List[Token]) -> Node:
-    assert len(tokens) % 2 == 1
+def parse_recursive(tokens:List[Token]) -> Node:
+    result:Node = None
 
-    result:Node = make_literal_node(tokens.pop(0))
+    front = tokens[0]
 
-    while tokens:
+    if front.variant == TokenVariant.OPEN_PAREN:
+        # (   <stuff>   )
+        # Take the ( off, then recurse.  The return value will tells us where we stopped, which should be a ) that we can just pop
+        tokens.pop(0)
+        result, tokens = parse_recursive(tokens)
+        assert tokens and tokens[0].variant == TokenVariant.CLOSE_PAREN
+        tokens.pop(0)   # Remove the close paren
+    else:
+        assert front.variant == TokenVariant.NUM
+        result = make_literal_node(front)
+        tokens.pop(0)
+
+    while tokens and tokens[0].variant != TokenVariant.CLOSE_PAREN:
         oper = tokens.pop(0)
-        num = make_literal_node(tokens.pop(0))
-        result = make_binary_node(result, oper, num)
+        if tokens[0].variant == TokenVariant.NUM:
+            right = make_literal_node(tokens.pop(0))
+        elif tokens[0].variant == TokenVariant.OPEN_PAREN:
+            right, tokens = parse_recursive(tokens)
+        result = make_binary_node(result, oper, right)
 
-    return result
+    return result, tokens
+
+def parse(tokens:List[Token]) -> Node:
+    root, remaining = parse_recursive(tokens)
+
+    assert len(remaining) == 0
+    return root
+    

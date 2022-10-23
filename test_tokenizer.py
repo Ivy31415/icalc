@@ -7,6 +7,12 @@ def num(n:int):
 def op(op:str):
     return Token(op, TokenVariant.OPER)
 
+def lparen():
+    return Token('(', TokenVariant.OPEN_PAREN)
+
+def rparen():
+    return Token(')', TokenVariant.CLOSE_PAREN)
+
 def test_literal():
     assert tokenize("1") == [num(1)]
 
@@ -34,3 +40,8 @@ def test_multiple_digit_numbers():
 
     assert tokenize("0.43 + 3.75 ") == [num(.43), op('+'), num(3.75)]
     assert tokenize(".43 + 3.75 ") == [Token('.43', TokenVariant.NUM), op('+'), num(3.75)]
+
+
+def test_parens():
+    assert tokenize("()") == [lparen(), rparen()]
+    assert tokenize("(() + ())") == [lparen(), lparen(), rparen(), op('+'), lparen(), rparen(), rparen()]
