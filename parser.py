@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, Union
+from typing import Literal, Union, Tuple
 from tokenizer import *
 
 class BinaryOp(Enum):
@@ -10,17 +10,23 @@ class BinaryOp(Enum):
     DIV = 3
 
 def get_precedence(token:Token) -> int:
-    if token.variant == TokenVariant.NUM:
-        return 1
-
+    # Precedence Table:
+    #     4:    <Literal>
+    #     3:    ()
+    #     2:    */
+    #     1:    +-
+    #
     if token.variant == TokenVariant.OPER:
         if token.value in ['+', '-']:
-            return 2
+            return 1
         if token.value in ['*', '/']:
-            return 3
+            return 2
         raise SyntaxError(f'Unknown operator {token.value}')
 
     if token.variant in [TokenVariant.OPEN_PAREN, TokenVariant.CLOSE_PAREN]:
+        return 3
+
+    if token.variant == TokenVariant.NUM:
         return 4
 
     raise SyntaxError(f'Token {token.variant} doesnt support the concept of precedence')
@@ -72,37 +78,47 @@ def make_literal_node(arg:Token) -> LiteralNode:
 def make_binary_node(left:Node, oper:Token, right:Node) -> BinaryOpNode:
     assert oper.variant == TokenVariant.OPER
     return BinaryOpNode(left, oper_token_to_enum(oper), right)
-     
 
-def parse_recursive(tokens:List[Token]) -> Node:
-    result:Node = None
+def prase_parens_expr(tokens:List[Token]) -> Tuple[Node, List[Token]]:
+    # Don't call this function unless your list starts with an open paren.
+    assert tokens and tokens[0].variant == TokenVariant.OPEN_PAREN
 
+    # (   <expr>   )
+    # Take the ( off, then parse an arbitrary expression.  The return value will tells us where we stopped, which should be a ) that we can just pop
+    result, tokens = parse_expr_recursive(tokens[1:])
+    assert tokens and tokens[0].variant == TokenVariant.CLOSE_PAREN
+
+    if tokens[0].variant != TokenVariant.CLOSE_PAREN:
+        raise SyntaxError(f'Unexpected token {tokens[0]}')
+    return result, tokens[1:]
+
+def parse_one_node(tokens:List[Token]) -> Tuple[Node, List[Token]]:
     front = tokens[0]
 
-    if front.variant == TokenVariant.OPEN_PAREN:
-        # (   <stuff>   )
-        # Take the ( off, then recurse.  The return value will tells us where we stopped, which should be a ) that we can just pop
-        tokens.pop(0)
-        result, tokens = parse_recursive(tokens)
-        assert tokens and tokens[0].variant == TokenVariant.CLOSE_PAREN
-        tokens.pop(0)   # Remove the close paren
-    else:
-        assert front.variant == TokenVariant.NUM
-        result = make_literal_node(front)
-        tokens.pop(0)
+    if front.variant == TokenVariant.NUM:
+        return (make_literal_node(front), tokens[1:])
+    elif front.variant == TokenVariant.OPEN_PAREN:
+        return prase_parens_expr(tokens)
 
-    while tokens and tokens[0].variant != TokenVariant.CLOSE_PAREN:
-        oper = tokens.pop(0)
-        if tokens[0].variant == TokenVariant.NUM:
-            right = make_literal_node(tokens.pop(0))
-        elif tokens[0].variant == TokenVariant.OPEN_PAREN:
-            right, tokens = parse_recursive(tokens)
-        result = make_binary_node(result, oper, right)
+    raise SyntaxError(f'Unexpected token {front.variant}')
 
-    return result, tokens
+def parse_expr_recursive(tokens:List[Token]) -> Tuple[Node, List[Token]]:
+    left:Node = None
+
+    left, tokens = parse_one_node(tokens)
+
+    # Keep chomping tokens until we get something unexpected.  The sequence should be a repeating pattern of the form
+    #     <operator> <expr>
+    # So consume an operator (which is always exactly one token), then consume an expr by recursing.
+    while tokens and (tokens[0].variant == TokenVariant.OPER):
+        oper = tokens[0]
+        right, tokens = parse_one_node(tokens[1:])
+        left = make_binary_node(left, oper, right)
+
+    return left, tokens
 
 def parse(tokens:List[Token]) -> Node:
-    root, remaining = parse_recursive(tokens)
+    root, remaining = parse_expr_recursive(tokens)
 
     assert len(remaining) == 0
     return root
