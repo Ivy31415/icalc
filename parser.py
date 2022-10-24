@@ -85,14 +85,14 @@ def prase_parens_expr(tokens:List[Token]) -> Tuple[Node, List[Token]]:
 
     # (   <expr>   )
     # Take the ( off, then parse an arbitrary expression.  The return value will tells us where we stopped, which should be a ) that we can just pop
-    result, tokens = parse_expr_recursive(tokens[1:])
+    result, tokens = parse_expression(tokens[1:])
     assert tokens and tokens[0].variant == TokenVariant.CLOSE_PAREN
 
     if tokens[0].variant != TokenVariant.CLOSE_PAREN:
         raise SyntaxError(f'Unexpected token {tokens[0]}')
     return result, tokens[1:]
 
-def parse_one_node(tokens:List[Token]) -> Tuple[Node, List[Token]]:
+def parse_one_term(tokens:List[Token]) -> Tuple[Node, List[Token]]:
     front = tokens[0]
 
     if front.variant == TokenVariant.NUM:
@@ -102,24 +102,51 @@ def parse_one_node(tokens:List[Token]) -> Tuple[Node, List[Token]]:
 
     raise SyntaxError(f'Unexpected token {front.variant}')
 
-def parse_expr_recursive(tokens:List[Token]) -> Tuple[Node, List[Token]]:
-    left:Node = None
+def peek(tokens:List[Token]) -> Token:
+    if not tokens:
+        return None
+    return tokens[0]
 
-    left, tokens = parse_one_node(tokens)
+def does_binary_operator_match_pred(token:Token, pred):
+    if not token:
+        return False
+    if token.variant != TokenVariant.OPER:
+        return False
+    if token.value not in ['/', '*', '+', '-']:
+        return False
+    return pred(token)
 
-    # Keep chomping tokens until we get something unexpected.  The sequence should be a repeating pattern of the form
-    #     <operator> <expr>
-    # So consume an operator (which is always exactly one token), then consume an expr by recursing.
-    while tokens and (tokens[0].variant == TokenVariant.OPER):
-        oper = tokens[0]
-        right, tokens = parse_one_node(tokens[1:])
-        left = make_binary_node(left, oper, right)
+def precedence_is_greater(token:Token, precedence:int) -> bool:
+    return get_precedence(token) > precedence
 
-    return left, tokens
+def precedence_is_greater_equal(token:Token, precedence:int) -> bool:
+    return get_precedence(token) >= precedence
+
+def parse_expr_recursive(lhs:Node, tokens:List[Token], min_precedence:int) -> Tuple[Node, List[Token]]:
+    lookahead = peek(tokens)
+    if not lookahead:
+        return (lhs, [])
+    
+    while does_binary_operator_match_pred(lookahead, lambda token: precedence_is_greater_equal(token, min_precedence)):
+        op = lookahead
+        tokens.pop(0)
+        rhs, tokens = parse_one_term(tokens)
+        lookahead = peek(tokens)
+        while does_binary_operator_match_pred(lookahead, lambda token: precedence_is_greater(token, get_precedence(op))):
+            op_precedence = get_precedence(op)
+            if get_precedence(lookahead) > op_precedence:
+                op_precedence += 1
+            rhs, tokens = parse_expr_recursive(rhs, tokens, op_precedence)
+            lookahead = peek(tokens)
+        lhs = make_binary_node(lhs, op, rhs)
+    return (lhs, tokens)
+
+def parse_expression(tokens:List[Token]) -> Node:
+    lhs, tokens = parse_one_term(tokens)
+
+    return parse_expr_recursive(lhs, tokens, 0)
 
 def parse(tokens:List[Token]) -> Node:
-    root, remaining = parse_expr_recursive(tokens)
-
-    assert len(remaining) == 0
-    return root
+    lhs, _ = parse_expression(tokens)
+    return lhs
     

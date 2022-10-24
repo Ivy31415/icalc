@@ -32,4 +32,8 @@ def test_evaluate_parens_with_different_operators():
 def test_disjoint_parens():
     assert evaluate('(3-4) / (5-6)') == 1
     assert evaluate('((3-4)-(5-6)) - ((3/4)+(5/6))') == pytest.approx(-1.5833333333)
+
+
+def test_operator_precedence():
+    return evaluate('2 + 3 * 4 - 5')
     

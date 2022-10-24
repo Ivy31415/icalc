@@ -30,7 +30,15 @@ def test_parse_literal():
 def test_parse_addition():
     tokens = tokenize('3+4')
     assert parse(tokens) == bn(ln(3), BinaryOp.ADD, ln(4))
-    
+
+def test_parse_three_additions():
+    tokens = tokenize('3+4+5')
+    assert parse(tokens) == bn(bn(ln(3), BinaryOp.ADD, ln(4)), BinaryOp.ADD, ln(5))
+
+def test_parse_add_and_sub():
+    assert parse(tokenize('3+4-5')) == bn(bn(ln(3), BinaryOp.ADD, ln(4)), BinaryOp.SUB, ln(5))
+    assert parse(tokenize('3-4+5')) == bn(bn(ln(3), BinaryOp.SUB, ln(4)), BinaryOp.ADD, ln(5))
+
 def test_parse_literal_in_parens():
     tokens = tokenize('(3)')
     assert parse(tokens) == ln(3)
@@ -38,7 +46,7 @@ def test_parse_literal_in_parens():
 def test_parse_expr_in_parens():
     tokens = tokenize('(3+4)')
     assert parse(tokens) == bn(ln(3), BinaryOp.ADD, ln(4))
-    
+   
 
 def test_literal_op_parens():
     tokens = tokenize('3 - (4 + 5)')
@@ -47,3 +55,11 @@ def test_literal_op_parens():
 def test_parens_op_literal():
     tokens = tokenize('(3 - 4) + 5')
     assert parse(tokens) == bn(bn(ln(3), BinaryOp.SUB, ln(4)), BinaryOp.ADD, ln(5))
+
+def test_parse_add_sub_mul_div():
+    assert parse(tokenize('3+4/5')) == bn(ln(3), BinaryOp.ADD, bn(ln(4), BinaryOp.DIV, ln(5)))
+
+def test_parse_add_sub_mul_div_add():
+    result = parse(tokenize('3-4/5+6'))
+    answer = result.eval()
+    assert result == bn(bn(ln(3), BinaryOp.SUB, bn(ln(4), BinaryOp.DIV, ln(5))), BinaryOp.ADD, ln(6))
