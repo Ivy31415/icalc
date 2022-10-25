@@ -35,5 +35,5 @@ def test_disjoint_parens():
 
 
 def test_operator_precedence():
-    return evaluate('2 + 3 * 4 - 5')
-    
+    assert evaluate('2 + 3 * 4 - 5') == 9
+    assert evaluate('2 + 3 * 4 * 5 - 6 + 7*8 - 9') == 103
