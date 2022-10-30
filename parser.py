@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from tokenize import TokenInfo
 from typing import Literal, Union, Tuple
 from tokenizer import *
 
@@ -9,9 +10,13 @@ class BinaryOp(Enum):
     MUL = 2
     DIV = 3
 
+class UnaryOp(Enum):
+    POS = 0
+    NEG = 1
+    POS_NEG = 2
+
 def get_precedence(token:Token) -> int:
     # Precedence Table:
-    #     4:    <Literal>
     #     3:    ()
     #     2:    */
     #     1:    +-
@@ -21,7 +26,7 @@ def get_precedence(token:Token) -> int:
             return 1
         if token.value in ['*', '/']:
             return 2
-        raise SyntaxError(f'Unknown operator {token.value}')
+        raise SyntaxError(f'error 1: Unknown operator {token.value}')
 
     if token.variant in [TokenVariant.OPEN_PAREN, TokenVariant.CLOSE_PAREN]:
         return 3
@@ -29,7 +34,7 @@ def get_precedence(token:Token) -> int:
     if token.variant == TokenVariant.NUM:
         return 4
 
-    raise SyntaxError(f'Token {token.variant} doesnt support the concept of precedence')
+    raise SyntaxError(f'error 2: Token {token.variant} doesnt support the concept of precedence')
 
 class Node:
     def eval(self):
@@ -60,6 +65,19 @@ class BinaryOpNode(Node):
         if self.op == BinaryOp.DIV:
             return l / r
 
+@dataclass
+class UnaryOpNode(Node):
+    op:UnaryOp
+    right:Node
+
+    def eval(self):
+        inner = self.right.eval()
+        if self.op == UnaryOp.NEG:
+            return -inner
+        if self.op == UnaryOp.POS:
+            return inner
+        raise SyntaxError("Unsupported unary op")
+
 def oper_token_to_enum(oper:Token) -> BinaryOp:
     assert oper.variant == TokenVariant.OPER
     if oper.value == '*':
@@ -71,6 +89,13 @@ def oper_token_to_enum(oper:Token) -> BinaryOp:
     if oper.value == '/':
         return BinaryOp.DIV
 
+def unary_op_to_enum(oper:Token) -> UnaryOp:
+    assert oper.variant == TokenVariant.OPER
+    if oper.value == '-':
+        return UnaryOp.NEG
+    if oper.value == '+':
+        return UnaryOp.POS
+    
 def make_literal_node(arg:Token) -> LiteralNode:
     assert arg.variant == TokenVariant.NUM
     return LiteralNode((float if '.' in arg.value else int)(arg.value))
@@ -79,74 +104,59 @@ def make_binary_node(left:Node, oper:Token, right:Node) -> BinaryOpNode:
     assert oper.variant == TokenVariant.OPER
     return BinaryOpNode(left, oper_token_to_enum(oper), right)
 
-def prase_parens_expr(tokens:List[Token]) -> Tuple[Node, List[Token]]:
-    # Don't call this function unless your list starts with an open paren.
-    assert tokens and tokens[0].variant == TokenVariant.OPEN_PAREN
+def parse_primary(tokens: List[Token]) -> Tuple[Node, List[Token]]:
+    if tokens[0].variant == TokenVariant.OPER and tokens[0].value in '-+':
+        item = tokens.pop(0)
+        op = unary_op_to_enum(item)
+        root_node, tokens = parse_primary(tokens)
+        return UnaryOpNode(op, root_node), tokens
 
-    # (   <expr>   )
-    # Take the ( off, then parse an arbitrary expression.  The return value will tells us where we stopped, which should be a ) that we can just pop
-    result, tokens = parse_expression(tokens[1:])
-    assert tokens and tokens[0].variant == TokenVariant.CLOSE_PAREN
+    if tokens[0].variant == TokenVariant.OPEN_PAREN:
+        tokens.pop(0)
+        root_node, tokens = parse_expr(tokens)
+        if tokens[0].variant !=  TokenVariant.CLOSE_PAREN:
+            raise SyntaxError('error 3: unexpected_token')
+        tokens.pop(0)
+        return root_node, tokens
+    if tokens[0].variant == TokenVariant.NUM:
+        root_node = make_literal_node(tokens[0])
+        tokens.pop(0)
+        return root_node, tokens
+    raise SyntaxError('error 4: Unexpected_Input')
 
-    if tokens[0].variant != TokenVariant.CLOSE_PAREN:
-        raise SyntaxError(f'Unexpected token {tokens[0]}')
-    return result, tokens[1:]
-
-def parse_one_term(tokens:List[Token]) -> Tuple[Node, List[Token]]:
-    front = tokens[0]
-
-    if front.variant == TokenVariant.NUM:
-        return (make_literal_node(front), tokens[1:])
-    elif front.variant == TokenVariant.OPEN_PAREN:
-        return prase_parens_expr(tokens)
-
-    raise SyntaxError(f'Unexpected token {front.variant}')
-
-def peek(tokens:List[Token]) -> Token:
+def peek(tokens: List[Token]) -> Token:
     if not tokens:
         return None
     return tokens[0]
 
-def does_binary_operator_match_pred(token:Token, pred):
-    if not token:
+def binary_op_matches_predicate(op:Token, pred) -> bool:
+    if not op:
         return False
-    if token.variant != TokenVariant.OPER:
+    if op.variant != TokenVariant.OPER:
         return False
-    if token.value not in ['/', '*', '+', '-']:
+    if op.value not in ['+', '-', '/', '*']:
         return False
-    return pred(token)
+    return pred(op)
 
-def precedence_is_greater(token:Token, precedence:int) -> bool:
-    return get_precedence(token) > precedence
-
-def precedence_is_greater_equal(token:Token, precedence:int) -> bool:
-    return get_precedence(token) >= precedence
-
-def parse_expr_recursive(lhs:Node, tokens:List[Token], min_precedence:int) -> Tuple[Node, List[Token]]:
+def parse_expr_1(lhs: Node, tokens: List[Token], min_prec: int) -> Tuple[Node, List[Token]]:
     lookahead = peek(tokens)
-    if not lookahead:
-        return (lhs, [])
-    
-    while does_binary_operator_match_pred(lookahead, lambda token: precedence_is_greater_equal(token, min_precedence)):
+    while binary_op_matches_predicate(lookahead, lambda token: get_precedence(token) >= min_prec):
         op = lookahead
         tokens.pop(0)
-        rhs, tokens = parse_one_term(tokens)
+        rhs, tokens = parse_primary(tokens)
         lookahead = peek(tokens)
-        while does_binary_operator_match_pred(lookahead, lambda token: precedence_is_greater(token, get_precedence(op))):
-            op_precedence = get_precedence(op)
-            if get_precedence(lookahead) > op_precedence:
-                op_precedence += 1
-            rhs, tokens = parse_expr_recursive(rhs, tokens, op_precedence)
+        while binary_op_matches_predicate(lookahead, lambda token: get_precedence(token) > get_precedence(op)):
+            prec2 = get_precedence(op) + (1 if get_precedence(lookahead) > get_precedence(op) else 0)
+            rhs, tokens = parse_expr_1(rhs, tokens, prec2)
             lookahead = peek(tokens)
-        lhs = make_binary_node(lhs, op, rhs)
-    return (lhs, tokens)
+        lhs =  make_binary_node(lhs, op, rhs)
+    return lhs, tokens
 
-def parse_expression(tokens:List[Token]) -> Node:
-    lhs, tokens = parse_one_term(tokens)
-
-    return parse_expr_recursive(lhs, tokens, 0)
+def parse_expr(tokens:List[Token]) -> Tuple[Node, List[Token]]:
+    root_node, tokens = parse_primary(tokens)
+    return parse_expr_1(root_node, tokens, 0)
 
 def parse(tokens:List[Token]) -> Node:
-    lhs, _ = parse_expression(tokens)
-    return lhs
-    
+    result, tokens = parse_expr(tokens)
+    assert not tokens
+    return result

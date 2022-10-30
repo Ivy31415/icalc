@@ -37,3 +37,11 @@ def test_disjoint_parens():
 def test_operator_precedence():
     assert evaluate('2 + 3 * 4 - 5') == 9
     assert evaluate('2 + 3 * 4 * 5 - 6 + 7*8 - 9') == 103
+
+def test_unary_negation():
+    assert evaluate('-2') == -2
+    assert evaluate('2--4') == 6
+
+def test_unary_positive():
+    assert evaluate('+2') == 2
+    assert evaluate('2-+4') == -2
