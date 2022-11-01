@@ -9,6 +9,7 @@ class BinaryOp(Enum):
     SUB = 1
     MUL = 2
     DIV = 3
+    EXP = 4
 
 class UnaryOp(Enum):
     POS = 0
@@ -17,7 +18,7 @@ class UnaryOp(Enum):
 
 def get_precedence(token:Token) -> int:
     # Precedence Table:
-    #     3:    ()
+    #     3:    ^
     #     2:    */
     #     1:    +-
     #
@@ -26,6 +27,8 @@ def get_precedence(token:Token) -> int:
             return 1
         if token.value in ['*', '/']:
             return 2
+        if token.value in ['^']:
+            return 3
         raise SyntaxError(f'error 1: Unknown operator {token.value}')
 
     if token.variant in [TokenVariant.OPEN_PAREN, TokenVariant.CLOSE_PAREN]:
@@ -64,6 +67,8 @@ class BinaryOpNode(Node):
             return l - r
         if self.op == BinaryOp.DIV:
             return l / r
+        if self.op == BinaryOp.EXP:
+            return pow(l, r)
 
 @dataclass
 class UnaryOpNode(Node):
@@ -88,6 +93,8 @@ def oper_token_to_enum(oper:Token) -> BinaryOp:
         return BinaryOp.SUB
     if oper.value == '/':
         return BinaryOp.DIV
+    if oper.value == '^':
+        return BinaryOp.EXP
 
 def unary_op_to_enum(oper:Token) -> UnaryOp:
     assert oper.variant == TokenVariant.OPER
@@ -134,7 +141,7 @@ def binary_op_matches_predicate(op:Token, pred) -> bool:
         return False
     if op.variant != TokenVariant.OPER:
         return False
-    if op.value not in ['+', '-', '/', '*']:
+    if op.value not in ['+', '-', '/', '*', '^']:
         return False
     return pred(op)
 
